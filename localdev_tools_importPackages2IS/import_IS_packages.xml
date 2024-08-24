@@ -1,54 +1,25 @@
-<?xml version="1.0"?>
+<project default="import-multiple-packages" basedir="." xmlns:antcontrib="antlib:net.sf.antcontrib"
+	xmlns:xmltask="antlib:com.oopsconsultancy.xmltask">
 
-<!-- 
-Usages:
-
-1) Import required packages from git repo into Designer(eclipse) workspace.
-2) If we want to import set of packages then run 'import-multiple-packages' targets with 'packages-to-import' property.
-	e.g : ant -f build.xml import-multiple-packages -DwebMethods.home=C:\SoftwareAG -DrepoLocation=C:\Users\dummy\git\repository-tmp -Dpackages-to-import="package1,package2,package3"
-3) If we want to import all the packages from the local repositroy then use 'import-packages-from-repo' 
-	e.g : ant -f build.xml import-packages-from-repo -DwebMethods.home=C:\SoftwareAG -DrepoLocation=C:\Users\dummy\git\repository-tmp
-4) Refresh Server Node in Designer Service Development
-
-Author: Biswa Bhusan Dalai (Software AG)
-
-SPDX-License-Identifier: Apache-2.0
-
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.    
-   
--->
-
-<project default="import-multiple-packages" basedir="." xmlns:antcontrib="antlib:net.sf.antcontrib" xmlns:xmltask="antlib:com.oopsconsultancy.xmltask">
-	
-	<property file = "build.properties"/>
+	<property file="build.properties" />
 
 	<property name="repoLocation" value="C:\githere\" />
 	<property name="packages-to-import" value="package_1,package_2" />
 	<property name="server-host" value="localhost" />
-	<property name="server-port" value="5555"/>
-	<property name="userid" value="Administrator"/>
+	<property name="server-port" value="5555" />
+	<property name="userid" value="Administrator" />
 	<property name="password" value="manage" />
 	<property name="webMethods.home" value="C:\SoftwareAG" />
-	<property name="integration-server-packages" value="${webMethods.home}\IntegrationServer\instances\default\packages" />
-	<!-- for MSR >= 10.5 change this to ${webMethods.home}\IntegrationServer\packages -->
-	
+	<property name="integration-server-packages" value="${webMethods.home}/IntegrationServer/packages" />
+
 	<path id="classpath.ant">
-		<fileset file="${webMethods.home}/common/lib/ant/ant-contrib-1.0b3.jar"/>
+		<fileset file="${webMethods.home}/common/lib/ant/ant-contrib-1.0b3.jar" />
 	</path>
 
+	<taskdef resource="net/sf/antcontrib/antcontrib.properties" uri="antlib:net.sf.antcontrib" classpathref="classpath.ant" />
+	<taskdef uri="antlib:net.sf.antcontrib" resource="net/sf/antcontrib/antlib.xml" classpathref="classpath.ant" />
+
 	<target name="import-packages-from-repo">
-		<taskdef resource="net/sf/antcontrib/antcontrib.properties" uri="antlib:net.sf.antcontrib" classpathref="classpath.ant" />
-		<taskdef uri="antlib:net.sf.antcontrib" resource="net/sf/antcontrib/antlib.xml" classpathref="classpath.ant" />
 		<dirset id="dist.contents" dir="${repoLocation}">
 			<include name="*"/>
 		</dirset>
@@ -71,8 +42,6 @@ SPDX-License-Identifier: Apache-2.0
 	</target>
 
 	<target name="import-multiple-packages">
-		<taskdef resource="net/sf/antcontrib/antcontrib.properties" uri="antlib:net.sf.antcontrib" classpathref="classpath.ant" />
-		<taskdef uri="antlib:net.sf.antcontrib" resource="net/sf/antcontrib/antlib.xml" classpathref="classpath.ant" />
 		<antcontrib:for list="${packages-to-import}" delimiter="," param="val">
 			<sequential>
 				<antcall target="import-package">
@@ -90,18 +59,74 @@ SPDX-License-Identifier: Apache-2.0
 	</target>
 
 	<target name="import-package">
+		<!-- Check the OS and set a property -->
+		<condition property="os.is.windows" value="true">
+			<os family="windows" />
+		</condition>
+
+		<condition property="os.is.mac" value="true">
+			<os family="mac" />
+		</condition>
+
+		<!-- Echo the detected OS -->
+		<antcontrib:if>
+			<equals arg1="${os.is.windows}" arg2="true"/>
+			<then>
+				<echo message="Detected OS: Windows" />
+				<antcall target="import-package-win">
+					<param name="packageName" value="${packageName}" />
+				</antcall>
+			</then>
+			<else>
+				<echo message="Detected OS: macOS" />
+				<antcall target="import-package-mac">
+					<param name="packageName" value="${packageName}" />
+				</antcall>
+			</else>
+		</antcontrib:if>
+	</target>
+
+	<target name="import-package-win">
+		<echo message="Installing package: ${packageName} on Windows" />
+		<echo message="Executing command: mklink /j ${integration-server-packages}\${packageName} ${repoLocation}\${packageName}" />
 		<exec executable="cmd">
 			<arg line="/c mklink /j ${integration-server-packages}\${packageName} ${repoLocation}\${packageName}" />
 		</exec>
+		<echo message="Executing command: ${integration-server-packages}\..\bin\jcode.bat make ${packageName}" />
 		<exec executable="cmd">
 			<arg line="/c ${integration-server-packages}\..\bin\jcode.bat make ${packageName}" />
 		</exec>
 	</target>
 
+	<target name="import-package-mac">
+		<echo message="Installing package: ${packageName} on macOS" />
+		<echo message="Executing command: ln -s ${repoLocation}/${packageName} ${integration-server-packages}/${packageName}" />
+		<!-- Create a symbolic link (equivalent to mklink /j on Windows) -->
+		<exec executable="/bin/ln">
+			<arg value="-s" />
+			<arg value="${repoLocation}/${packageName}" />
+			<arg value="${integration-server-packages}/${packageName}" />
+		</exec>
+
+		<echo message="Executing command: ${integration-server-packages}/../bin/jcode.sh make ${packageName}" />
+		<!-- Execute the jcode.sh script (assuming it's a shell script on macOS) -->
+		<exec executable="/bin/sh">
+			<arg value="${integration-server-packages}/../bin/jcode.sh" />
+			<arg value="make" />
+			<arg value="${packageName}" />
+		</exec>
+	</target>
+
 	<target name="activate-package">
-		<get src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageActivate?package=${packageName}" dest="./dummy.html" username="${userid}" password="${password}" />
-		<get src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageEnable?package=${packageName}" dest="./dummy.html" username="${userid}" password="${password}" />
-		<get src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageReload?package=${packageName}" dest="./dummy.html" username="${userid}" password="${password}" />
+		<get
+			src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageActivate?package=${packageName}"
+			dest="./dummy.html" username="${userid}" password="${password}" />
+		<get
+			src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageEnable?package=${packageName}"
+			dest="./dummy.html" username="${userid}" password="${password}" />
+		<get
+			src="http://${server-host}:${server-port}/invoke/wm.server.packages:packageReload?package=${packageName}"
+			dest="./dummy.html" username="${userid}" password="${password}" />
 		<delete file="./dummy.html" />
 	</target>
 
