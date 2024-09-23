@@ -1,10 +1,11 @@
-<project default="import-packages-from-repo" basedir="." xmlns:antcontrib="antlib:net.sf.antcontrib"
+<project default="import-code-from-repo" basedir="." xmlns:antcontrib="antlib:net.sf.antcontrib"
     xmlns:xmltask="antlib:com.oopsconsultancy.xmltask">
 
     <property file="build.properties" />
 
     <property name="repoLocation" value="C:/githere/" />
     <property name="packages_path_in_repo" value="${repoLocation}/assets/IS/packages" />
+    <property name="properties_path_in_repo" value="${repoLocation}/assets/IS/properties" />
     <property name="packages-to-import" value="package_1,package_2" />
     <property name="server-host" value="localhost" />
     <property name="server-port" value="5555" />
@@ -81,7 +82,7 @@
 	</target>
 
     <!-- Main import target with dependencies -->
-    <target name="import-packages-from-repo" depends="validate-packages-path,check-IS-running">
+    <target name="import-code-from-repo" depends="validate-packages-path,check-IS-running,import-properties">
         <dirset id="dist.contents" dir="${packages_path_in_repo}">
             <include name="*" />
         </dirset>
@@ -204,5 +205,58 @@
 			dest="./${packageName}.html" username="${userid}" password="${password}" />
 		<delete file="./${packageName}.html" />
 	</target>
+
+	<target name="import-properties">
+		<!-- Declare property files location -->
+		<property name="properties_path_in_repo" value="${repoLocation}/assets/IS/properties" />
+		<property name="properties_target_path" value="${webMethods.home.properties}" />
+	
+		<!-- Check and create the target properties folder if not present -->
+		<mkdir dir="${properties_target_path}" />
+	
+		<!-- Check if the properties folder exists in the repo -->
+		<available file="${properties_path_in_repo}" type="dir" property="properties.folder.exists" />
+		<fail unless="properties.folder.exists">
+			The properties folder ${properties_path_in_repo} does not exist in the repo.
+		</fail>
+	
+		<!-- Get user input for the environment selection (DV, IT, UA, PD) -->
+		<input addproperty="PROP_FILES_ENV_TO_IMPORT" message="Select environment property files to import (DV, IT, UA, PD):" validargs="DV,IT,UA,PD" />
+	
+		<!-- Create a fileset for all environment-specific property files -->
+		<fileset id="envPropertyFiles" dir="${properties_path_in_repo}">
+			<include name="${PROP_FILES_ENV_TO_IMPORT}_*.*" />
+		</fileset>
+	
+		<!-- List all files that will be processed for linking -->
+		<echo message="The following files will be processed for creating symlinks:" />
+		<pathconvert property="fileListToProcess" pathsep="${line.separator}">
+			<fileset refid="envPropertyFiles" />
+		</pathconvert>
+		<echo message="${fileListToProcess}" />
+	
+		<!-- Iterate over each file and create symbolic links -->
+		<apply executable="ln" parallel="false" osfamily="unix" failonerror="true">
+			<fileset refid="envPropertyFiles" />
+			<mapper type="regexp" from="${PROP_FILES_ENV_TO_IMPORT}_(.*)" to="${properties_target_path}/\1" />
+			<arg value="-s" />
+			<srcfile />
+			<targetfile />
+		</apply>
+	
+		<!-- Apply for Windows systems -->
+		<apply executable="cmd" parallel="false" osfamily="windows" failonerror="true">
+			<fileset refid="envPropertyFiles" />
+			<mapper type="regexp" from="${PROP_FILES_ENV_TO_IMPORT}_(.*)" to="${properties_target_path}/\1" />
+			<arg value="/c" />
+			<arg value="mklink" />
+			<srcfile />
+			<targetfile />
+		</apply>
+	
+		<!-- Output the linked files -->
+		<echo message="Created symlinks for the selected environment's property files." />
+	</target>
+
     
 </project>
